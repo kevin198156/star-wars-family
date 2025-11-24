@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🌟 星星大作戰</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+   <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
+        // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+        // 這是您的 Firebase Config
+        // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+        const firebaseConfig = {
+            apiKey: "AIzaSyCzGe5rv3idVJAbM5B2u9eZRKLYEJKtFyc",
+            authDomain: "star-wars-family.firebaseapp.com",
+            databaseURL: "https://star-wars-family-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "star-wars-family",
+            storageBucket: "star-wars-family.firebasestorage.app",
+            messagingSenderId: "917389967102",
+            appId: "1:917389967102:web:6bec9611467ea475beefaf",
+            measurementId: "G-P7VW1RS2WQ"
+        };
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        // 簡單防呆：如果沒有填寫 Config，提醒使用者
+        if (!firebaseConfig.apiKey) {
+            alert("請注意：尚未填入 Firebase Config，程式將無法雲端同步！\n請用記事本開啟檔案，填入代碼。");
+        } else {
+            // 只需要初始化一次
+            const app = initializeApp(firebaseConfig);
+            const database = getDatabase(app);
+            window.dbRef = ref(database, 'star_wars_data_v2'); // 使用 v2 路徑
+            window.firebaseSet = set;
+            window.firebaseOnValue = onValue;
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap');
+
+        :root {
+            --bg-body: #f8f9fa;
+            --card-bg: #fff;
+            --text-main: #333;
+            --radius: 20px;
+            --shadow: 0 8px 20px rgba(0,0,0,0.08);
+        }
+
+        /* --- 主題配色系統 --- */
+        /* 1. 少女粉 (Girl Default) */
+        body.theme-pink { --primary: #FF69B4; --primary-light: #FFF0F5; --accent: #FF1493; --gradient: linear-gradient(135deg, #FF69B4, #FFA07A); }
+        /* 2. 天空藍 (Boy Default) */
+        body.theme-blue { --primary: #4FACFE; --primary-light: #E0F7FA; --accent: #00f2fe; --gradient: linear-gradient(135deg, #4FACFE, #00f2fe); }
+        /* 3. 帥氣紅 */
+        body.theme-red  { --primary: #FF416C; --primary-light: #FFF5F5; --accent: #FF4B2B; --gradient: linear-gradient(135deg, #FF416C, #FF4B2B); }
+        /* 4. 森林綠 */
+        body.theme-green{ --primary: #43e97b; --primary-light: #E8F5E9; --accent: #38f9d7; --gradient: linear-gradient(135deg, #43e97b, #38f9d7); }
+        /* 5. 魔幻紫 */
+        body.theme-purple{--primary: #a18cd1; --primary-light: #F3E5F5; --accent: #fbc2eb; --gradient: linear-gradient(135deg, #a18cd1, #fbc2eb); }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: var(--bg-body);
+            margin: 0; padding: 0;
+            padding-bottom: 110px; /* Nav height */
+            color: var(--text-main);
+            transition: background 0.3s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .container { max-width: 800px; margin: 0 auto; padding: 15px; }
+
+        /* --- 全新 Header 設計 (左我右敵) --- */
+        .header-card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 2px solid white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* 背景裝飾 */
+        .header-card::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 6px;
+            background: var(--gradient);
+        }
+
+        /* 左側：自己 (強調) */
+        .my-profile {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 2;
+        }
+        .my-avatar {
+            width: 75px; height: 75px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid var(--primary);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .my-info h2 { margin: 0; font-size: 1.2rem; color: #555; }
+        .my-score { font-size: 2.8rem; font-weight: 900; color: var(--primary); line-height: 1; margin-top: 5px; }
+        .my-score span { font-size: 1rem; color: #999; font-weight: normal; }
+
+        /* 右側：對手 (弱化) */
+        .rival-profile {
+            flex: 1;
+            text-align: right;
+            border-left: 1px solid #eee;
+            padding-left: 15px;
+            position: relative;
+        }
+        .rival-label { font-size: 0.8rem; color: #999; margin-bottom: 2px; }
+        .rival-name { font-weight: bold; font-size: 1rem; color: #666; }
+        .rival-score { 
+            background: #eee; color: #666; 
+            padding: 3px 10px; border-radius: 20px; 
+            font-size: 0.9rem; font-weight: bold;
+            display: inline-block; margin-top: 5px;
+        }
+        
+        /* VS Badge */
+        .vs-badge {
+            position: absolute;
+            left: -18px; top: 50%; transform: translateY(-50%);
+            background: #ff4757; color: white;
+            font-size: 0.7rem; font-weight: bold;
+            padding: 4px; border-radius: 50%;
+            border: 2px solid white;
+            z-index: 2;
+        }
+
+        /* --- 列表與卡片 --- */
+        .grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 15px; }
+        .item-card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex; flex-direction: column; justify-content: space-between; height: 80px;
+        }
+        .item-card:active { transform: scale(0.98); border-color: var(--primary); }
+        .item-name { font-weight: bold; font-size: 1.1rem; }
+        .item-bottom { display: flex; justify-content: space-between; align-items: flex-end; }
+        .cost-badge { background: var(--primary-light); color: var(--primary); padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.9rem; }
+        .cost-badge.minus { background: #ffebee; color: #ff4757; }
+
+        /* --- UI 元件 --- */
+        .btn {
+            background: var(--gradient);
+            color: white; border: none;
+            padding: 14px; border-radius: 50px;
+            font-size: 1.1rem; font-weight: bold;
+            width: 100%; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            margin-bottom: 10px;
+        }
+        .btn-outline { background: white; border: 2px solid #ddd; color: #666; box-shadow: none; }
+        
+        input, select, textarea {
+            width: 100%; padding: 12px; margin-bottom: 12px;
+            border: 2px solid #eee; border-radius: 12px;
+            font-size: 1rem; box-sizing: border-box; font-family: inherit;
+        }
+        
+        /* --- 底部導覽 --- */
+        .bottom-nav {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid #eee;
+            display: flex; justify-content: space-around; padding: 10px 0 25px 0;
+            z-index: 100;
+        }
+        .nav-item { text-align: center; color: #aaa; flex: 1; font-size: 0.8rem; cursor: pointer; transition: 0.2s; }
+        .nav-item.active { color: var(--primary); transform: translateY(-5px); }
+        .nav-icon { font-size: 1.6rem; display: block; margin-bottom: 3px; }
+
+        /* --- Modal --- */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; }
+        .modal-content { background: white; width: 85%; max-width: 450px; border-radius: 25px; padding: 25px; max-height: 85vh; overflow-y: auto; animation: popUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popUp { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* --- 登入頁 --- */
+        #profile-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #f0f2f5; z-index: 5000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .profile-card {
+            background: white; width: 200px; padding: 20px; margin: 15px;
+            border-radius: 20px; text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            cursor: pointer; transition: 0.3s;
+            border: 3px solid transparent;
+        }
+        .profile-card:hover { transform: translateY(-5px); }
+        .p-avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; border: 3px solid #eee; }
+        .profile-card.theme-pink:hover { border-color: #FF69B4; }
+        .profile-card.theme-blue:hover { border-color: #4FACFE; }
+
+    </style>
+</head>
+<body class="theme-pink"> <div id="profile-screen">
+        <h2 style="color:#555; margin-bottom: 30px;">選擇使用者</h2>
+        <div style="display: flex; flex-wrap: wrap; justify-content: center;">
+            <div class="profile-card theme-pink" onclick="selectUser('girl')">
+                <div style="position: relative;">
+                    <img id="login-avatar-girl" class="p-avatar" src="">
+                    <div style="font-size:0.8rem; color:#999; margin-top:-10px; margin-bottom:5px;">更換頭像</div>
+                    <div style="position:absolute; top:0; left:0; width:100%; height:100%;" onclick="event.stopPropagation(); triggerUpload('girl')"></div>
+                </div>
+                <h3 id="login-name-girl">載入中...</h3>
+            </div>
+            <div class="profile-card theme-blue" onclick="selectUser('boy')">
+                <div style="position: relative;">
+                    <img id="login-avatar-boy" class="p-avatar" src="">
+                    <div style="font-size:0.8rem; color:#999; margin-top:-10px; margin-bottom:5px;">更換頭像</div>
+                    <div style="position:absolute; top:0; left:0; width:100%; height:100%;" onclick="event.stopPropagation(); triggerUpload('boy')"></div>
+                </div>
+                <h3 id="login-name-boy">載入中...</h3>
+            </div>
+        </div>
+        <input type="file" id="file-upload" accept="image/*" style="display:none" onchange="handleFileUpload(this)">
+    </div>
+
+    <div id="app-container" style="display:none;">
+        
+        <div class="container">
+            <div class="header-card">
+                <div class="my-profile">
+                    <img id="header-my-avatar" class="my-avatar" src="">
+                    <div class="my-info">
+                        <h2 id="header-my-name">User</h2>
+                        <div class="my-score">
+                            <span id="header-my-balance">0</span> <span>⭐</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rival-profile">
+                    <div class="vs-badge">VS</div>
+                    <div class="rival-label">對手</div>
+                    <div class="rival-name" id="header-rival-name">Rival</div>
+                    <div class="rival-score" id="header-rival-score">0</div>
+                </div>
+            </div>
+
+            <div id="view-tasks" class="view-section">
+                <h3 style="color: var(--primary);">📝 今日任務</h3>
+                <div class="grid-list" id="task-list"></div>
+            </div>
+
+            <div id="view-rewards" class="view-section" style="display:none;">
+                <h3 style="color: var(--primary);">🎁 獎勵兌換</h3>
+                <div class="grid-list" id="reward-list"></div>
+            </div>
+
+            <div id="view-stats" class="view-section" style="display:none;">
+                <h3 style="color: var(--primary);">📊 戰況分析</h3>
+                <div style="background:white; padding:15px; border-radius:15px; margin-bottom:20px;">
+                    <canvas id="chart-total"></canvas>
+                </div>
+                <div style="background:white; padding:15px; border-radius:15px; margin-bottom:20px;">
+                    <canvas id="chart-daily"></canvas>
+                </div>
+                <h4 style="margin-bottom:10px;">📋 最新紀錄</h4>
+                <div id="history-list" style="background:white; padding:15px; border-radius:15px;"></div>
+            </div>
+
+            <div id="view-settings" class="view-section" style="display:none;">
+                <h3 style="color: var(--primary);">⚙️ 設定與管理</h3>
+                
+                <div style="background:white; padding:20px; border-radius:15px; margin-bottom:20px;">
+                    <button class="btn btn-outline" onclick="openProfileEdit()">✏️ 修改暱稱與主題風格</button>
+                    <button class="btn btn-outline" style="margin-top:10px;" onclick="openTaskEdit()">📝 編輯任務與獎勵內容</button>
+                    <button class="btn btn-outline" style="margin-top:10px;" onclick="exportExcel()">📤 匯出 Excel 報表</button>
+                    <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
+                    <button class="btn" style="background:#555;" onclick="logout()">↩️ 登出 (切換使用者)</button>
+                </div>
+
+                <div style="background:white; padding:20px; border-radius:15px;">
+                    <h4>⚖️ 家長手動調整</h4>
+                    <input type="date" id="adjust-date">
+                    <input type="text" id="adjust-reason" placeholder="原因 (例: 幫忙做家事)">
+                    <input type="number" id="adjust-amount" placeholder="分數 (負數為扣分)">
+                    <button class="btn" onclick="submitAdjustment()">送出調整</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bottom-nav">
+            <div class="nav-item active" onclick="switchTab('tasks', this)"><span class="nav-icon">✨</span>任務</div>
+            <div class="nav-item" onclick="switchTab('rewards', this)"><span class="nav-icon">🎁</span>獎勵</div>
+            <div class="nav-item" onclick="switchTab('stats', this)"><span class="nav-icon">📈</span>戰況</div>
+            <div class="nav-item" onclick="switchTab('settings', this)"><span class="nav-icon">⚙️</span>設定</div>
+        </div>
+    </div>
+
+    <div id="action-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modal-title" style="margin-top:0;"></h2>
+            <p id="modal-subtitle" style="color:var(--primary); font-weight:bold; font-size:1.5rem;"></p>
+            <label>日期:</label> <input type="date" id="modal-date">
+            <label>備註:</label> <input type="text" id="modal-note" placeholder="備註...">
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="btn btn-outline" onclick="closeModal('action-modal')">取消</button>
+                <button class="btn" onclick="confirmAction()">確認</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-top:0;">編輯清單</h3>
+            <label>任務 (一行一個)</label>
+            <textarea id="edit-tasks" rows="5"></textarea>
+            <label>獎勵 (名稱,分數)</label>
+            <textarea id="edit-rewards" rows="5"></textarea>
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <button class="btn btn-outline" onclick="closeModal('edit-modal')">取消</button>
+                <button class="btn" onclick="saveTaskConfig()">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="profile-edit-modal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-top:0;">修改個人檔案</h3>
+            
+            <label>顯示暱稱</label>
+            <input type="text" id="edit-name-input">
+            
+            <label>介面主題風格</label>
+            <select id="edit-theme-input">
+                <option value="pink">💖 少女粉 (Pink)</option>
+                <option value="blue">💙 天空藍 (Blue)</option>
+                <option value="red">🔥 帥氣紅 (Red)</option>
+                <option value="green">🌿 森林綠 (Green)</option>
+                <option value="purple">🔮 魔幻紫 (Purple)</option>
+            </select>
+
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="btn btn-outline" onclick="closeModal('profile-edit-modal')">取消</button>
+                <button class="btn" onclick="saveProfileConfig()">儲存設定</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- 變數與初始化 ---
+    let db = {};
+    let currentUser = null;
+    let pendingAction = null;
+    let chartTotalInstance, chartDailyInstance;
+    let uploadTargetUser = '';
+
+    const DEFAULT_DB = {
+        users: {
+            girl: { 
+                name: "詠晰", 
+                theme: "pink",
+                avatar: "https://cdn-icons-png.flaticon.com/512/4140/4140047.png", 
+                balance: 0,
+                tasks: ["整理書桌", "練琴20分", "閱讀英文書", "摺好睡衣"],
+                rewards: [{name:"看影片30分", cost:10}, {name:"麥當勞", cost:50}]
+            },
+            boy: { 
+                name: "弈澄", 
+                theme: "blue",
+                avatar: "https://cdn-icons-png.flaticon.com/512/4140/4140048.png", 
+                balance: 0,
+                tasks: ["收玩具", "自己刷牙", "吃完青菜", "睡午覺"],
+                rewards: [{name:"看卡通1集", cost:5}, {name:"買小汽車", cost:30}]
+            }
+        },
+        transactions: []
+    };
+
+    // --- Firebase 連線處理 ---
+    function initApp() {
+        if(window.firebaseOnValue) {
+            window.firebaseOnValue(window.dbRef, (snapshot) => {
+                const val = snapshot.val();
+                if (val) {
+                    db = val;
+                    if(!db.transactions) db.transactions = [];
+                } else {
+                    db = JSON.parse(JSON.stringify(DEFAULT_DB));
+                    saveDB();
+                }
+                updateProfileScreen(); // 更新登入畫面的名字/頭像
+                if (currentUser) {
+                    applyTheme(db.users[currentUser].theme); // 確保主題同步更新
+                    updateUI();
+                }
+            });
+        } else {
+            // 本機測試模式 (無 Firebase)
+            const local = localStorage.getItem('star_wars_local');
+            db = local ? JSON.parse(local) : JSON.parse(JSON.stringify(DEFAULT_DB));
+            updateProfileScreen();
+        }
+    }
+    
+    // 延遲執行確保 SDK 載入
+    setTimeout(initApp, 1000);
+
+    function saveDB() {
+        if(window.firebaseSet) {
+            window.firebaseSet(window.dbRef, db);
+        } else {
+            localStorage.setItem('star_wars_local', JSON.stringify(db));
+            updateUI();
+        }
+    }
+
+    // --- 核心邏輯 ---
+
+    function updateProfileScreen() {
+        if(!db.users) return;
+        document.getElementById('login-name-girl').innerText = db.users.girl.name;
+        document.getElementById('login-avatar-girl').src = db.users.girl.avatar;
+        document.getElementById('login-name-boy').innerText = db.users.boy.name;
+        document.getElementById('login-avatar-boy').src = db.users.boy.avatar;
+    }
+
+    function selectUser(user) {
+        currentUser = user;
+        document.getElementById('profile-screen').style.display = 'none';
+        document.getElementById('app-container').style.display = 'block';
+        
+        applyTheme(db.users[user].theme || (user==='girl'?'pink':'blue'));
+        switchTab('tasks', document.querySelectorAll('.nav-item')[0]);
+        updateUI();
+    }
+
+    function applyTheme(themeName) {
+        document.body.className = `theme-${themeName}`;
+    }
+
+    function logout() {
+        currentUser = null;
+        document.getElementById('app-container').style.display = 'none';
+        document.getElementById('profile-screen').style.display = 'flex';
+        document.body.className = 'theme-pink'; // reset to default
+    }
+
+    function switchTab(tab, el) {
+        document.querySelectorAll('.view-section').forEach(d => d.style.display = 'none');
+        document.getElementById('view-' + tab).style.display = 'block';
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        if(el) el.classList.add('active');
+        if(tab === 'stats') renderCharts();
+    }
+
+    function updateUI() {
+        if(!db.users) return;
+        const u = db.users[currentUser];
+        const rivalKey = currentUser === 'girl' ? 'boy' : 'girl';
+        const rival = db.users[rivalKey];
+
+        // Header 更新 (左我右敵)
+        document.getElementById('header-my-name').innerText = u.name;
+        document.getElementById('header-my-avatar').src = u.avatar;
+        document.getElementById('header-my-balance').innerText = u.balance;
+        
+        document.getElementById('header-rival-name').innerText = rival.name;
+        document.getElementById('header-rival-score').innerText = rival.balance + " ⭐";
+
+        // 任務列表
+        const tList = document.getElementById('task-list');
+        tList.innerHTML = '';
+        u.tasks.forEach((t, i) => {
+            tList.innerHTML += `
+            <div class="item-card" onclick="initAction('task', ${i})">
+                <div class="item-name">${t}</div>
+                <div class="item-bottom">
+                    <div class="cost-badge">+1 ⭐</div>
+                    <small style="color:#aaa">點擊完成</small>
+                </div>
+            </div>`;
+        });
+
+        // 獎勵列表
+        const rList = document.getElementById('reward-list');
+        rList.innerHTML = '';
+        u.rewards.forEach((r, i) => {
+            rList.innerHTML += `
+            <div class="item-card" onclick="initAction('reward', ${i})">
+                <div class="item-name">${r.name}</div>
+                <div class="item-bottom">
+                    <div class="cost-badge minus">-${r.cost} ⭐</div>
+                    <small style="color:#aaa">點擊兌換</small>
+                </div>
+            </div>`;
+        });
+    }
+
+    // --- 動作與交易 ---
+    function initAction(type, index) {
+        const u = db.users[currentUser];
+        const item = type === 'task' ? u.tasks[index] : u.rewards[index];
+        const val = type === 'task' ? 1 : item.cost;
+        pendingAction = { type, index, item, val };
+
+        document.getElementById('modal-title').innerText = type === 'task' ? '確認完成' : '確認兌換';
+        document.getElementById('modal-subtitle').innerText = type === 'task' ? `獲得 +1 星` : `扣除 -${val} 星`;
+        document.getElementById('modal-date').valueAsDate = new Date();
+        document.getElementById('modal-note').value = '';
+        document.getElementById('action-modal').style.display = 'flex';
+    }
+
+    function confirmAction() {
+        const dateStr = document.getElementById('modal-date').value;
+        const note = document.getElementById('modal-note').value;
+        if(!dateStr) return alert('請選擇日期');
+
+        const u = db.users[currentUser];
+        let amount = pendingAction.type === 'task' ? 1 : -pendingAction.val;
+        
+        if (amount < 0 && u.balance < pendingAction.val) {
+            return alert('星星不夠喔！');
+        }
+
+        const itemName = pendingAction.type === 'task' ? pendingAction.item : pendingAction.item.name;
+        
+        // 寫入交易
+        db.transactions.push({
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            dateStr, user: currentUser, type: pendingAction.type,
+            name: itemName, amount, note
+        });
+        
+        // 更新餘額
+        db.users[currentUser].balance += amount;
+        saveDB();
+        closeModal('action-modal');
+        alert('成功！');
+    }
+
+    function submitAdjustment() {
+        const dateStr = document.getElementById('adjust-date').value;
+        const reason = document.getElementById('adjust-reason').value;
+        const amount = parseInt(document.getElementById('adjust-amount').value);
+        if(!dateStr || !reason || isNaN(amount)) return alert('請填寫完整');
+        
+        db.transactions.push({
+            id: Date.now(), timestamp: new Date().toISOString(),
+            dateStr, user: currentUser, type: 'adjust',
+            name: reason, amount, note: '[家長調整]'
+        });
+        db.users[currentUser].balance += amount;
+        saveDB();
+        alert('已調整');
+    }
+
+    // --- 設定與編輯 ---
+    
+    // 1. 任務與獎勵
+    function openTaskEdit() {
+        const u = db.users[currentUser];
+        document.getElementById('edit-tasks').value = u.tasks.join('\n');
+        document.getElementById('edit-rewards').value = u.rewards.map(r=>`${r.name},${r.cost}`).join('\n');
+        document.getElementById('edit-modal').style.display = 'flex';
+    }
+
+    function saveTaskConfig() {
+        const u = db.users[currentUser];
+        u.tasks = document.getElementById('edit-tasks').value.split('\n').map(t=>t.trim()).filter(t=>t);
+        const rLines = document.getElementById('edit-rewards').value.split('\n');
+        u.rewards = [];
+        rLines.forEach(l => {
+            const [n, c] = l.split(',');
+            if(n && c) u.rewards.push({name: n.trim(), cost: parseInt(c)});
+        });
+        saveDB();
+        closeModal('edit-modal');
+    }
+
+    // 2. 個人檔案 (名稱與主題)
+    function openProfileEdit() {
+        const u = db.users[currentUser];
+        document.getElementById('edit-name-input').value = u.name;
+        document.getElementById('edit-theme-input').value = u.theme || (currentUser==='girl'?'pink':'blue');
+        document.getElementById('profile-edit-modal').style.display = 'flex';
+    }
+
+    function saveProfileConfig() {
+        const newName = document.getElementById('edit-name-input').value.trim();
+        const newTheme = document.getElementById('edit-theme-input').value;
+        
+        if(newName) {
+            db.users[currentUser].name = newName;
+            db.users[currentUser].theme = newTheme;
+            saveDB();
+            applyTheme(newTheme);
+            closeModal('profile-edit-modal');
+        }
+    }
+
+    // 3. 頭像上傳
+    function triggerUpload(user) { uploadTargetUser = user; document.getElementById('file-upload').click(); }
+    function handleFileUpload(input) {
+        if(input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                db.users[uploadTargetUser].avatar = e.target.result;
+                saveDB();
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    // --- 工具函式 ---
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    function exportExcel() {
+        const sorted = [...db.transactions].sort((a,b)=>a.id-b.id);
+        let csv = "\uFEFF時間,日期,人,項目,星數,備註,餘額\n";
+        let bals = { girl:0, boy:0 };
+        sorted.forEach(l => {
+            bals[l.user] += l.amount;
+            const uName = db.users[l.user].name;
+            csv += `${new Date(l.timestamp).toLocaleString()},${l.dateStr},${uName},${l.name},${l.amount},${(l.note||"").replace(/,/g," ")},${bals[l.user]}\n`;
+        });
+        const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `星星報表_${new Date().toISOString().slice(0,10)}.csv`;
+        link.click();
+    }
+
+    // --- 圖表 ---
+    function renderCharts() {
+        // 更新歷史
+        const list = document.getElementById('history-list');
+        list.innerHTML = '';
+        db.transactions.filter(t=>t.user===currentUser).sort((a,b)=>b.id-a.id).slice(0,10).forEach(t=>{
+            list.innerHTML += `<div style="border-bottom:1px solid #eee; padding:8px 0; display:flex; justify-content:space-between; font-size:0.9rem;">
+                <div>${t.dateStr} <span style="font-weight:bold">${t.name}</span></div>
+                <div style="color:${t.amount>0?'#2ecc71':'#e74c3c'}">${t.amount>0?'+':''}${t.amount}</div>
+            </div>`;
+        });
+
+        // 總分圓餅圖 (Total) - 改為長條圖更直觀
+        const ctxT = document.getElementById('chart-total').getContext('2d');
+        if(chartTotalInstance) chartTotalInstance.destroy();
+        
+        const gName = db.users.girl.name;
+        const bName = db.users.boy.name;
+
+        chartTotalInstance = new Chart(ctxT, {
+            type: 'bar',
+            data: {
+                labels: [gName, bName],
+                datasets: [{
+                    label: '目前總積分',
+                    data: [db.users.girl.balance, db.users.boy.balance],
+                    backgroundColor: ['#FF69B4', '#4FACFE'],
+                    borderRadius: 10
+                }]
+            },
+            options: { plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+        });
+
+        // 每日折線圖
+        const ctxD = document.getElementById('chart-daily').getContext('2d');
+        if(chartDailyInstance) chartDailyInstance.destroy();
+        const days = []; const dG = []; const dB = [];
+        for(let i=6; i>=0; i--){
+            const d = new Date(); d.setDate(d.getDate()-i);
+            const ds = d.toISOString().split('T')[0];
+            days.push(ds.slice(5)); // MM-DD
+            dG.push(db.transactions.filter(t=>t.user==='girl' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
+            dB.push(db.transactions.filter(t=>t.user==='boy' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
+        }
+
+        chartDailyInstance = new Chart(ctxD, {
+            type: 'line',
+            data: {
+                labels: days,
+                datasets: [
+                    {label: gName, data: dG, borderColor: '#FF69B4', tension: 0.3},
+                    {label: bName, data: dB, borderColor: '#4FACFE', tension: 0.3}
+                ]
+            }
+        });
+    }
+</script>
+</body>
+</html>
