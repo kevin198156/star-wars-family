@@ -8,7 +8,7 @@
     
    <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, child, push, runTransaction } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
         // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
         // 這是您的 Firebase Config
@@ -35,6 +35,9 @@
             window.dbRef = ref(database, 'star_wars_data_v2'); // 使用 v2 路徑
             window.firebaseSet = set;
             window.firebaseOnValue = onValue;
+            window.firebaseChild = child;
+            window.firebasePush = push;
+            window.firebaseRunTransaction = runTransaction;
         }
     </script>
 
@@ -428,6 +431,26 @@
         }
     }
 
+    function getTransactions() {
+        if (!db.transactions) return [];
+        if (Array.isArray(db.transactions)) return db.transactions.filter(Boolean);
+        return Object.values(db.transactions).filter(Boolean);
+    }
+
+    async function addScoreTransaction(entry) {
+        if(window.firebasePush && window.firebaseRunTransaction && window.firebaseChild) {
+            const txRef = window.firebaseChild(window.dbRef, 'transactions');
+            const balanceRef = window.firebaseChild(window.dbRef, `users/${entry.user}/balance`);
+            await window.firebasePush(txRef, entry);
+            await window.firebaseRunTransaction(balanceRef, current => (current || 0) + entry.amount);
+        } else {
+            if(!Array.isArray(db.transactions)) db.transactions = getTransactions();
+            db.transactions.push(entry);
+            db.users[entry.user].balance += entry.amount;
+            saveDB();
+        }
+    }
+
     // --- 核心邏輯 ---
 
     function updateProfileScreen() {
@@ -524,7 +547,7 @@
         document.getElementById('action-modal').style.display = 'flex';
     }
 
-    function confirmAction() {
+    async function confirmAction() {
         const dateStr = document.getElementById('modal-date').value;
         const note = document.getElementById('modal-note').value;
         if(!dateStr) return alert('請選擇日期');
@@ -537,36 +560,43 @@
         }
 
         const itemName = pendingAction.type === 'task' ? pendingAction.item : pendingAction.item.name;
-        
-        // 寫入交易
-        db.transactions.push({
+
+        const entry = {
             id: Date.now(),
             timestamp: new Date().toISOString(),
             dateStr, user: currentUser, type: pendingAction.type,
             name: itemName, amount, note
-        });
-        
-        // 更新餘額
-        db.users[currentUser].balance += amount;
-        saveDB();
-        closeModal('action-modal');
-        alert('成功！');
+        };
+
+        try {
+            await addScoreTransaction(entry);
+            closeModal('action-modal');
+            alert('成功！');
+        } catch (error) {
+            console.error(error);
+            alert('同步失敗，請確認網路後再試一次');
+        }
     }
 
-    function submitAdjustment() {
+    async function submitAdjustment() {
         const dateStr = document.getElementById('adjust-date').value;
         const reason = document.getElementById('adjust-reason').value;
         const amount = parseInt(document.getElementById('adjust-amount').value);
         if(!dateStr || !reason || isNaN(amount)) return alert('請填寫完整');
-        
-        db.transactions.push({
+
+        const entry = {
             id: Date.now(), timestamp: new Date().toISOString(),
             dateStr, user: currentUser, type: 'adjust',
             name: reason, amount, note: '[家長調整]'
-        });
-        db.users[currentUser].balance += amount;
-        saveDB();
-        alert('已調整');
+        };
+
+        try {
+            await addScoreTransaction(entry);
+            alert('已調整');
+        } catch (error) {
+            console.error(error);
+            alert('同步失敗，請確認網路後再試一次');
+        }
     }
 
     // --- 設定與編輯 ---
@@ -630,7 +660,7 @@
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
     function exportExcel() {
-        const sorted = [...db.transactions].sort((a,b)=>a.id-b.id);
+        const sorted = getTransactions().sort((a,b)=>a.id-b.id);
         let csv = "\uFEFF時間,日期,人,項目,星數,備註,餘額\n";
         let bals = { girl:0, boy:0 };
         sorted.forEach(l => {
@@ -647,10 +677,11 @@
 
     // --- 圖表 ---
     function renderCharts() {
+        const transactions = getTransactions();
         // 更新歷史
         const list = document.getElementById('history-list');
         list.innerHTML = '';
-        db.transactions.filter(t=>t.user===currentUser).sort((a,b)=>b.id-a.id).slice(0,10).forEach(t=>{
+        transactions.filter(t=>t.user===currentUser).sort((a,b)=>b.id-a.id).slice(0,10).forEach(t=>{
             list.innerHTML += `<div style="border-bottom:1px solid #eee; padding:8px 0; display:flex; justify-content:space-between; font-size:0.9rem;">
                 <div>${t.dateStr} <span style="font-weight:bold">${t.name}</span></div>
                 <div style="color:${t.amount>0?'#2ecc71':'#e74c3c'}">${t.amount>0?'+':''}${t.amount}</div>
@@ -686,8 +717,8 @@
             const d = new Date(); d.setDate(d.getDate()-i);
             const ds = d.toISOString().split('T')[0];
             days.push(ds.slice(5)); // MM-DD
-            dG.push(db.transactions.filter(t=>t.user==='girl' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
-            dB.push(db.transactions.filter(t=>t.user==='boy' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
+            dG.push(transactions.filter(t=>t.user==='girl' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
+            dB.push(transactions.filter(t=>t.user==='boy' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
         }
 
         chartDailyInstance = new Chart(ctxD, {
