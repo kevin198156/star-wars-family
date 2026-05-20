@@ -265,6 +265,11 @@
             white-space: nowrap;
             align-self: start;
         }
+        .history-empty {
+            color: #999;
+            text-align: center;
+            padding: 18px 0;
+        }
 
     </style>
 </head>
@@ -488,8 +493,14 @@
 
     function getTransactions() {
         if (!db.transactions) return [];
-        if (Array.isArray(db.transactions)) return db.transactions.filter(Boolean);
-        return Object.values(db.transactions).filter(Boolean);
+        const raw = Array.isArray(db.transactions) ? db.transactions : Object.values(db.transactions);
+        return raw
+            .filter(t => t && t.user && t.dateStr)
+            .map(t => ({
+                ...t,
+                id: Number(t.id || 0),
+                amount: Number(t.amount || 0)
+            }));
     }
 
     async function addScoreTransaction(entry) {
@@ -731,70 +742,92 @@
     }
 
     // --- 圖表 ---
-    function renderCharts() {
-        const transactions = getTransactions();
-        // 更新歷史
+    function renderHistory(transactions) {
         const list = document.getElementById('history-list');
-        list.innerHTML = '';
-        transactions.filter(t=>t.user===currentUser).sort((a,b)=>b.id-a.id).slice(0,10).forEach(t=>{
-            list.innerHTML += `<div class="history-row">
-                <div class="history-main">
-                    <div class="history-date">${t.dateStr}</div>
-                    <div class="history-name">${t.name}</div>
-                </div>
-                <div class="history-amount" style="color:${t.amount>0?'#2ecc71':'#e74c3c'}">${t.amount>0?'+':''}${t.amount}</div>
-            </div>`;
-        });
+        const items = transactions
+            .filter(t=>t.user===currentUser)
+            .sort((a,b)=>b.id-a.id)
+            .slice(0,10);
 
-        // 總分圓餅圖 (Total) - 改為長條圖更直觀
-        const ctxT = document.getElementById('chart-total').getContext('2d');
-        if(chartTotalInstance) chartTotalInstance.destroy();
-        
-        const gName = db.users.girl.name;
-        const bName = db.users.boy.name;
-
-        chartTotalInstance = new Chart(ctxT, {
-            type: 'bar',
-            data: {
-                labels: [gName, bName],
-                datasets: [{
-                    label: '目前總積分',
-                    data: [db.users.girl.balance, db.users.boy.balance],
-                    backgroundColor: ['#FF69B4', '#4FACFE'],
-                    borderRadius: 10
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins:{legend:{display:false}},
-                scales:{y:{beginAtZero:true}}
-            }
-        });
-
-        // 每日折線圖
-        const ctxD = document.getElementById('chart-daily').getContext('2d');
-        if(chartDailyInstance) chartDailyInstance.destroy();
-        const days = []; const dG = []; const dB = [];
-        for(let i=6; i>=0; i--){
-            const d = new Date(); d.setDate(d.getDate()-i);
-            const ds = d.toISOString().split('T')[0];
-            days.push(ds.slice(5)); // MM-DD
-            dG.push(transactions.filter(t=>t.user==='girl' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
-            dB.push(transactions.filter(t=>t.user==='boy' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
+        if (!items.length) {
+            list.innerHTML = '<div class="history-empty">目前沒有紀錄</div>';
+            return;
         }
 
-        chartDailyInstance = new Chart(ctxD, {
-            type: 'line',
-            data: {
-                labels: days,
-                datasets: [
-                    {label: gName, data: dG, borderColor: '#FF69B4', tension: 0.3},
-                    {label: bName, data: dB, borderColor: '#4FACFE', tension: 0.3}
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
-        });
+        list.innerHTML = items.map(t => `
+            <div class="history-row">
+                <div class="history-main">
+                    <div class="history-date">${t.dateStr}</div>
+                    <div class="history-name">${t.name || ''}</div>
+                </div>
+                <div class="history-amount" style="color:${t.amount>0?'#2ecc71':'#e74c3c'}">${t.amount>0?'+':''}${t.amount}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderCharts() {
+        const transactions = getTransactions();
+        renderHistory(transactions);
+
+        // 總分圓餅圖 (Total) - 改為長條圖更直觀
+        try {
+            const ctxT = document.getElementById('chart-total').getContext('2d');
+            if(chartTotalInstance) chartTotalInstance.destroy();
+
+            const gName = db.users.girl.name;
+            const bName = db.users.boy.name;
+
+            chartTotalInstance = new Chart(ctxT, {
+                type: 'bar',
+                data: {
+                    labels: [gName, bName],
+                    datasets: [{
+                        label: '目前總積分',
+                        data: [db.users.girl.balance, db.users.boy.balance],
+                        backgroundColor: ['#FF69B4', '#4FACFE'],
+                        borderRadius: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins:{legend:{display:false}},
+                    scales:{y:{beginAtZero:true}}
+                }
+            });
+        } catch (error) {
+            console.error('總分圖表渲染失敗', error);
+        }
+
+        // 每日折線圖
+        try {
+            const ctxD = document.getElementById('chart-daily').getContext('2d');
+            if(chartDailyInstance) chartDailyInstance.destroy();
+            const gName = db.users.girl.name;
+            const bName = db.users.boy.name;
+            const days = []; const dG = []; const dB = [];
+            for(let i=6; i>=0; i--){
+                const d = new Date(); d.setDate(d.getDate()-i);
+                const ds = d.toISOString().split('T')[0];
+                days.push(ds.slice(5)); // MM-DD
+                dG.push(transactions.filter(t=>t.user==='girl' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
+                dB.push(transactions.filter(t=>t.user==='boy' && t.dateStr===ds && t.amount>0).reduce((a,b)=>a+b.amount,0));
+            }
+
+            chartDailyInstance = new Chart(ctxD, {
+                type: 'line',
+                data: {
+                    labels: days,
+                    datasets: [
+                        {label: gName, data: dG, borderColor: '#FF69B4', tension: 0.3},
+                        {label: bName, data: dB, borderColor: '#4FACFE', tension: 0.3}
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        } catch (error) {
+            console.error('每日圖表渲染失敗', error);
+        }
     }
 </script>
 </body>
