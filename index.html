@@ -215,6 +215,57 @@
         .profile-card.theme-pink:hover { border-color: #FF69B4; }
         .profile-card.theme-blue:hover { border-color: #4FACFE; }
 
+        .stats-card {
+            background: white;
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .chart-wrap {
+            position: relative;
+            width: 100%;
+            height: 220px;
+        }
+        .chart-wrap.daily { height: 240px; }
+        .chart-wrap canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+        #history-list {
+            background: white;
+            padding: 15px;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .history-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+            font-size: 0.9rem;
+        }
+        .history-row:last-child { border-bottom: 0; }
+        .history-main { min-width: 0; }
+        .history-date {
+            color: #999;
+            font-size: 0.8rem;
+            margin-bottom: 2px;
+        }
+        .history-name {
+            font-weight: bold;
+            overflow-wrap: anywhere;
+            line-height: 1.35;
+        }
+        .history-amount {
+            font-weight: 900;
+            white-space: nowrap;
+            align-self: start;
+        }
+
     </style>
 </head>
 <body class="theme-pink"> <div id="profile-screen">
@@ -274,14 +325,18 @@
 
             <div id="view-stats" class="view-section" style="display:none;">
                 <h3 style="color: var(--primary);">📊 戰況分析</h3>
-                <div style="background:white; padding:15px; border-radius:15px; margin-bottom:20px;">
-                    <canvas id="chart-total"></canvas>
+                <div class="stats-card">
+                    <div class="chart-wrap">
+                        <canvas id="chart-total"></canvas>
+                    </div>
                 </div>
-                <div style="background:white; padding:15px; border-radius:15px; margin-bottom:20px;">
-                    <canvas id="chart-daily"></canvas>
+                <div class="stats-card">
+                    <div class="chart-wrap daily">
+                        <canvas id="chart-daily"></canvas>
+                    </div>
                 </div>
                 <h4 style="margin-bottom:10px;">📋 最新紀錄</h4>
-                <div id="history-list" style="background:white; padding:15px; border-radius:15px;"></div>
+                <div id="history-list"></div>
             </div>
 
             <div id="view-settings" class="view-section" style="display:none;">
@@ -682,9 +737,12 @@
         const list = document.getElementById('history-list');
         list.innerHTML = '';
         transactions.filter(t=>t.user===currentUser).sort((a,b)=>b.id-a.id).slice(0,10).forEach(t=>{
-            list.innerHTML += `<div style="border-bottom:1px solid #eee; padding:8px 0; display:flex; justify-content:space-between; font-size:0.9rem;">
-                <div>${t.dateStr} <span style="font-weight:bold">${t.name}</span></div>
-                <div style="color:${t.amount>0?'#2ecc71':'#e74c3c'}">${t.amount>0?'+':''}${t.amount}</div>
+            list.innerHTML += `<div class="history-row">
+                <div class="history-main">
+                    <div class="history-date">${t.dateStr}</div>
+                    <div class="history-name">${t.name}</div>
+                </div>
+                <div class="history-amount" style="color:${t.amount>0?'#2ecc71':'#e74c3c'}">${t.amount>0?'+':''}${t.amount}</div>
             </div>`;
         });
 
@@ -706,7 +764,12 @@
                     borderRadius: 10
                 }]
             },
-            options: { plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins:{legend:{display:false}},
+                scales:{y:{beginAtZero:true}}
+            }
         });
 
         // 每日折線圖
@@ -729,7 +792,8 @@
                     {label: gName, data: dG, borderColor: '#FF69B4', tension: 0.3},
                     {label: bName, data: dB, borderColor: '#4FACFE', tension: 0.3}
                 ]
-            }
+            },
+            options: { responsive: true, maintainAspectRatio: false }
         });
     }
 </script>
