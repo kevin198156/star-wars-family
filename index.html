@@ -434,7 +434,7 @@
     const DEFAULT_DB = {
         users: {
             girl: { 
-                name: "詠晰", 
+                name: "女孩", 
                 theme: "pink",
                 avatar: "https://cdn-icons-png.flaticon.com/512/4140/4140047.png", 
                 balance: 0,
@@ -442,7 +442,7 @@
                 rewards: [{name:"看影片30分", cost:10}, {name:"麥當勞", cost:50}]
             },
             boy: { 
-                name: "弈澄", 
+                name: "男孩", 
                 theme: "blue",
                 avatar: "https://cdn-icons-png.flaticon.com/512/4140/4140048.png", 
                 balance: 0,
@@ -484,11 +484,29 @@
 
     function saveDB() {
         if(window.firebaseSet) {
+            // Whole-root writes are reserved for first-time initialization only.
+            // Routine edits use savePath() so one device cannot overwrite unrelated newer data.
             window.firebaseSet(window.dbRef, db);
         } else {
             localStorage.setItem('star_wars_local', JSON.stringify(db));
             updateUI();
         }
+    }
+
+    async function savePath(path, value) {
+        if(window.firebaseSet && window.firebaseChild) {
+            await window.firebaseSet(window.firebaseChild(window.dbRef, path), value);
+        } else {
+            localStorage.setItem('star_wars_local', JSON.stringify(db));
+            updateUI();
+        }
+    }
+
+    function makeTextElement(tag, className, text) {
+        const el = document.createElement(tag);
+        if(className) el.className = className;
+        el.textContent = text;
+        return el;
     }
 
     function getTransactions() {
@@ -570,32 +588,42 @@
         document.getElementById('header-rival-name').innerText = rival.name;
         document.getElementById('header-rival-score').innerText = rival.balance + " ⭐";
 
-        // 任務列表
+        // 任務列表：Firebase 文字一律透過 textContent 寫入，避免被當成 HTML 執行。
         const tList = document.getElementById('task-list');
-        tList.innerHTML = '';
+        tList.replaceChildren();
         u.tasks.forEach((t, i) => {
-            tList.innerHTML += `
-            <div class="item-card" onclick="initAction('task', ${i})">
-                <div class="item-name">${t}</div>
-                <div class="item-bottom">
-                    <div class="cost-badge">+1 ⭐</div>
-                    <small style="color:#aaa">點擊完成</small>
-                </div>
-            </div>`;
+            const card = document.createElement('div');
+            card.className = 'item-card';
+            card.addEventListener('click', () => initAction('task', i));
+            card.appendChild(makeTextElement('div', 'item-name', t));
+
+            const bottom = document.createElement('div');
+            bottom.className = 'item-bottom';
+            bottom.appendChild(makeTextElement('div', 'cost-badge', '+1 ⭐'));
+            const hint = makeTextElement('small', '', '點擊完成');
+            hint.style.color = '#aaa';
+            bottom.appendChild(hint);
+            card.appendChild(bottom);
+            tList.appendChild(card);
         });
 
         // 獎勵列表
         const rList = document.getElementById('reward-list');
-        rList.innerHTML = '';
+        rList.replaceChildren();
         u.rewards.forEach((r, i) => {
-            rList.innerHTML += `
-            <div class="item-card" onclick="initAction('reward', ${i})">
-                <div class="item-name">${r.name}</div>
-                <div class="item-bottom">
-                    <div class="cost-badge minus">-${r.cost} ⭐</div>
-                    <small style="color:#aaa">點擊兌換</small>
-                </div>
-            </div>`;
+            const card = document.createElement('div');
+            card.className = 'item-card';
+            card.addEventListener('click', () => initAction('reward', i));
+            card.appendChild(makeTextElement('div', 'item-name', r.name));
+
+            const bottom = document.createElement('div');
+            bottom.className = 'item-bottom';
+            bottom.appendChild(makeTextElement('div', 'cost-badge minus', `-${r.cost} ⭐`));
+            const hint = makeTextElement('small', '', '點擊兌換');
+            hint.style.color = '#aaa';
+            bottom.appendChild(hint);
+            card.appendChild(bottom);
+            rList.appendChild(card);
         });
     }
 
@@ -675,17 +703,26 @@
         document.getElementById('edit-modal').style.display = 'flex';
     }
 
-    function saveTaskConfig() {
+    async function saveTaskConfig() {
         const u = db.users[currentUser];
         u.tasks = document.getElementById('edit-tasks').value.split('\n').map(t=>t.trim()).filter(t=>t);
         const rLines = document.getElementById('edit-rewards').value.split('\n');
         u.rewards = [];
         rLines.forEach(l => {
             const [n, c] = l.split(',');
-            if(n && c) u.rewards.push({name: n.trim(), cost: parseInt(c)});
+            const cost = parseInt(c);
+            if(n && Number.isFinite(cost) && cost >= 0) u.rewards.push({name: n.trim(), cost});
         });
-        saveDB();
-        closeModal('edit-modal');
+        try {
+            await Promise.all([
+                savePath(`users/${currentUser}/tasks`, u.tasks),
+                savePath(`users/${currentUser}/rewards`, u.rewards)
+            ]);
+            closeModal('edit-modal');
+        } catch (error) {
+            console.error(error);
+            alert('儲存失敗，請確認網路後再試一次');
+        }
     }
 
     // 2. 個人檔案 (名稱與主題)
@@ -696,16 +733,24 @@
         document.getElementById('profile-edit-modal').style.display = 'flex';
     }
 
-    function saveProfileConfig() {
+    async function saveProfileConfig() {
         const newName = document.getElementById('edit-name-input').value.trim();
         const newTheme = document.getElementById('edit-theme-input').value;
         
         if(newName) {
             db.users[currentUser].name = newName;
             db.users[currentUser].theme = newTheme;
-            saveDB();
-            applyTheme(newTheme);
-            closeModal('profile-edit-modal');
+            try {
+                await Promise.all([
+                    savePath(`users/${currentUser}/name`, newName),
+                    savePath(`users/${currentUser}/theme`, newTheme)
+                ]);
+                applyTheme(newTheme);
+                closeModal('profile-edit-modal');
+            } catch (error) {
+                console.error(error);
+                alert('儲存失敗，請確認網路後再試一次');
+            }
         }
     }
 
@@ -714,9 +759,15 @@
     function handleFileUpload(input) {
         if(input.files[0]) {
             const reader = new FileReader();
-            reader.onload = function(e) {
-                db.users[uploadTargetUser].avatar = e.target.result;
-                saveDB();
+            reader.onload = async function(e) {
+                const avatar = e.target.result;
+                db.users[uploadTargetUser].avatar = avatar;
+                try {
+                    await savePath(`users/${uploadTargetUser}/avatar`, avatar);
+                } catch (error) {
+                    console.error(error);
+                    alert('頭像儲存失敗，請確認網路後再試一次');
+                }
             }
             reader.readAsDataURL(input.files[0]);
         }
@@ -725,6 +776,12 @@
     // --- 工具函式 ---
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
+    function csvCell(value) {
+        let text = String(value ?? '');
+        if (/^[=+\-@]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g, '""') + '"';
+    }
+
     function exportExcel() {
         const sorted = getTransactions().sort((a,b)=>a.id-b.id);
         let csv = "\uFEFF時間,日期,人,項目,星數,備註,餘額\n";
@@ -732,13 +789,22 @@
         sorted.forEach(l => {
             bals[l.user] += l.amount;
             const uName = db.users[l.user].name;
-            csv += `${new Date(l.timestamp).toLocaleString()},${l.dateStr},${uName},${l.name},${l.amount},${(l.note||"").replace(/,/g," ")},${bals[l.user]}\n`;
+            csv += [
+                new Date(l.timestamp).toLocaleString(),
+                l.dateStr,
+                uName,
+                l.name,
+                l.amount,
+                l.note || '',
+                bals[l.user]
+            ].map(csvCell).join(',') + '\n';
         });
         const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
         link.download = `星星報表_${new Date().toISOString().slice(0,10)}.csv`;
         link.click();
+        URL.revokeObjectURL(link.href);
     }
 
     // --- 圖表 ---
@@ -750,19 +816,27 @@
             .slice(0,10);
 
         if (!items.length) {
-            list.innerHTML = '<div class="history-empty">目前沒有紀錄</div>';
+            list.replaceChildren(makeTextElement('div', 'history-empty', '目前沒有紀錄'));
             return;
         }
 
-        list.innerHTML = items.map(t => `
-            <div class="history-row">
-                <div class="history-main">
-                    <div class="history-date">${t.dateStr}</div>
-                    <div class="history-name">${t.name || ''}</div>
-                </div>
-                <div class="history-amount" style="color:${t.amount>0?'#2ecc71':'#e74c3c'}">${t.amount>0?'+':''}${t.amount}</div>
-            </div>
-        `).join('');
+        list.replaceChildren();
+        items.forEach(t => {
+            const row = document.createElement('div');
+            row.className = 'history-row';
+
+            const main = document.createElement('div');
+            main.className = 'history-main';
+            main.appendChild(makeTextElement('div', 'history-date', t.dateStr));
+            main.appendChild(makeTextElement('div', 'history-name', t.name || ''));
+
+            const amount = makeTextElement('div', 'history-amount', `${t.amount>0?'+':''}${t.amount}`);
+            amount.style.color = t.amount > 0 ? '#2ecc71' : '#e74c3c';
+
+            row.appendChild(main);
+            row.appendChild(amount);
+            list.appendChild(row);
+        });
     }
 
     function renderCharts() {
